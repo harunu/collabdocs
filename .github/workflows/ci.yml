@@ -39,7 +39,6 @@ jobs:
     name: E2E Tests
     runs-on: ubuntu-latest
     needs: build
-    continue-on-error: true
 
     steps:
       - uses: actions/checkout@v4
@@ -83,7 +82,7 @@ jobs:
   deploy-frontend:
     name: Deploy Frontend to Vercel
     runs-on: ubuntu-latest
-    needs: [build]
+    needs: [build, e2e]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     env:
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
@@ -104,7 +103,7 @@ jobs:
   deploy-backend:
     name: Deploy Backend to Railway
     runs-on: ubuntu-latest
-    needs: [build]
+    needs: [build, e2e]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4

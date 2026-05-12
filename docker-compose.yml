@@ -1,0 +1,60 @@
+version: '3.9'
+
+networks:
+  collabdocs-network:
+    driver: bridge
+
+services:
+  backend:
+    build:
+      context: ./backend
+      target: development
+    ports:
+      - "3001:3001"
+    env_file: ./.env
+    volumes:
+      - ./backend/src:/app/src
+    networks:
+      - collabdocs-network
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      target: development
+    ports:
+      - "5173:5173"
+    env_file: ./.env
+    volumes:
+      - ./frontend/src:/app/src
+    depends_on:
+      - backend
+    networks:
+      - collabdocs-network
+    restart: unless-stopped
+
+  playwright:
+    build:
+      context: .
+      dockerfile: Dockerfile.playwright
+    environment:
+      PLAYWRIGHT_BASE_URL: http://frontend:5173
+      VITE_API_URL: http://backend:3001
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      E2E_TEST_EMAIL: ${E2E_TEST_EMAIL:-e2e-test@collabdocs.test}
+      E2E_TEST_PASSWORD: ${E2E_TEST_PASSWORD:-TestPassword123!}
+      E2E_TEST_EMAIL_2: ${E2E_TEST_EMAIL_2:-e2e-test2@collabdocs.test}
+      E2E_TEST_PASSWORD_2: ${E2E_TEST_PASSWORD_2:-TestPassword123!}
+    volumes:
+      - ./e2e:/app/e2e
+      - ./playwright.config.ts:/app/playwright.config.ts
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - collabdocs-network
+    profiles:
+      - test
+

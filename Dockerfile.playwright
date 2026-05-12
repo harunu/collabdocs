@@ -1,0 +1,7 @@
+FROM mcr.microsoft.com/playwright:v1.60.0-jammy
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY playwright.config.ts ./
+COPY e2e/ ./e2e/
+CMD ["sh", "-c", "npx wait-on --timeout 120000 tcp:frontend:5173 tcp:backend:3001 && sleep 5 && npx playwright test --project=setup && npx playwright test --project=chromium"]

@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  .ProseMirror {
+    @apply outline-none min-h-full;
+  }
+
+  .ProseMirror h1 {
+    @apply text-3xl font-bold mb-2;
+  }
+
+  .ProseMirror h2 {
+    @apply text-2xl font-semibold mb-2;
+  }
+
+  .ProseMirror h3 {
+    @apply text-xl font-semibold mb-2;
+  }
+
+  .ProseMirror p {
+    @apply mb-2 leading-relaxed;
+  }
+
+  .ProseMirror ul {
+    @apply list-disc ml-6 mb-2;
+  }
+
+  .ProseMirror pre {
+    @apply bg-gray-900 text-gray-100 rounded-lg p-4 mb-2 font-mono text-sm overflow-x-auto;
+  }
+
+  .ProseMirror p.is-editor-empty:first-child::before {
+    @apply text-gray-400 float-left h-0 pointer-events-none;
+    content: attr(data-placeholder);
+  }
+
+  .collaboration-cursor__caret {
+    border-left: 1px solid;
+    border-right: 1px solid;
+    margin-left: -1px;
+    margin-right: -1px;
+    pointer-events: none;
+    position: relative;
+    word-break: normal;
+  }
+
+  .collaboration-cursor__label {
+    border-radius: 3px 3px 3px 0;
+    color: #fff;
+    font-size: 12px;
+    font-style: normal;
+    font-weight: 600;
+    left: -1px;
+    line-height: normal;
+    padding: 0.1rem 0.3rem;
+    position: absolute;
+    top: -1.4em;
+    user-select: none;
+    white-space: nowrap;
+  }
+}

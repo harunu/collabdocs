@@ -1,0 +1,13 @@
+import type { Config } from 'tailwindcss'
+
+export default {
+  content: ['./index.html', './src/**/*.{ts,tsx}'],
+  theme: {
+    extend: {
+      colors: {
+        accent: '#4f46e5',
+      },
+    },
+  },
+  plugins: [],
+} satisfies Config

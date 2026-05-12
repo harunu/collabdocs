@@ -1,0 +1,123 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── 1. Build ────────────────────────────────────────────────────────────────
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build backend
+        working-directory: backend
+        run: npm install && npm run build
+
+      - name: Build frontend
+        working-directory: frontend
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          # Point at localhost for the CI E2E run
+          VITE_API_URL: http://localhost:3001
+          VITE_WS_URL: ws://localhost:3001/ws
+        run: npm install && npm run build
+
+  # ── 2. E2E Tests ────────────────────────────────────────────────────────────
+  e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    needs: build
+    env:
+      # Backend env
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SUPABASE_JWT_SECRET: ${{ secrets.SUPABASE_JWT_SECRET }}
+      PORT: 3001
+      NODE_ENV: test
+      # Frontend build vars (baked into Vite at build time)
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+      VITE_API_URL: http://localhost:3001
+      VITE_WS_URL: ws://localhost:3001/ws
+      # Playwright
+      PLAYWRIGHT_BASE_URL: http://localhost:5173
+      # E2E test accounts
+      E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL }}
+      E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
+      E2E_TEST_EMAIL_2: ${{ secrets.E2E_TEST_EMAIL_2 }}
+      E2E_TEST_PASSWORD_2: ${{ secrets.E2E_TEST_PASSWORD_2 }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Build + start backend (REST + WebSocket on :3001)
+      - name: Build and start backend
+        working-directory: backend
+        run: npm install && npm run build && node dist/index.js &
+
+      # Build frontend with CI env vars so URLs are baked in
+      - name: Build frontend
+        working-directory: frontend
+        run: npm install && npm run build
+
+      # Serve the built frontend on :5173
+      - name: Start frontend preview
+        working-directory: frontend
+        run: npm run preview -- --port 5173 &
+
+      # Install Playwright browsers
+      - name: Install Playwright
+        run: npm install && npx playwright install --with-deps chromium
+
+      # Wait for both servers to be ready
+      - name: Wait for services
+        run: npx wait-on http://localhost:3001/health http://localhost:5173 --timeout 60000
+
+      # Run the full test suite
+      - name: Run E2E tests
+        run: npx playwright test
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: e2e/report/
+          retention-days: 7
+
+  # ── 3. Deploy to Vercel (main branch only) ──────────────────────────────────
+  deploy:
+    name: Deploy to Vercel
+    runs-on: ubuntu-latest
+    needs: [e2e]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pull Vercel project config + env vars (set in Vercel dashboard)
+      - name: Pull Vercel environment
+        run: npx vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+
+      # vercel build respects the project root (frontend/) set in Vercel dashboard
+      - name: Build project
+        run: npx vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Deploy to Vercel
+        run: npx vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}

@@ -33,75 +33,44 @@ jobs:
         run: npm install && npm run build
 
   # ── 2. E2E Tests ────────────────────────────────────────────────────────────
+  # Runs inside Docker Compose (same as local) so backend:3001 / frontend:5173
+  # hostnames resolve correctly inside the Playwright container.
   e2e:
     name: E2E Tests
     runs-on: ubuntu-latest
     needs: build
     continue-on-error: true
-    env:
-      # Backend env
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-      SUPABASE_JWT_SECRET: ${{ secrets.SUPABASE_JWT_SECRET }}
-      PORT: 3001
-      NODE_ENV: test
-      # Frontend build vars (baked into Vite at build time)
-      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-      VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-      VITE_API_URL: http://localhost:3001
-      VITE_WS_URL: ws://localhost:3001/ws
-      # Playwright
-      PLAYWRIGHT_BASE_URL: http://localhost:5173
-      # E2E test accounts
-      E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL }}
-      E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
-      E2E_TEST_EMAIL_2: ${{ secrets.E2E_TEST_EMAIL_2 }}
-      E2E_TEST_PASSWORD_2: ${{ secrets.E2E_TEST_PASSWORD_2 }}
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
+      # Write .env from secrets so docker-compose backend/frontend pick them up
+      - name: Create .env
+        run: |
+          cat > .env <<'ENVEOF'
+          SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_JWT_SECRET=${{ secrets.SUPABASE_JWT_SECRET }}
+          VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_API_URL=http://backend:3001
+          VITE_WS_URL=ws://backend:3001/ws
+          E2E_TEST_EMAIL=${{ secrets.E2E_TEST_EMAIL }}
+          E2E_TEST_PASSWORD=${{ secrets.E2E_TEST_PASSWORD }}
+          E2E_TEST_EMAIL_2=${{ secrets.E2E_TEST_EMAIL_2 }}
+          E2E_TEST_PASSWORD_2=${{ secrets.E2E_TEST_PASSWORD_2 }}
+          ENVEOF
 
-      # Build backend synchronously so dist/ is ready before server starts
-      - name: Build backend
-        working-directory: backend
-        run: npm install && npm run build
+      # Build images and run Playwright — exits with Playwright's exit code.
+      # The playwright container already handles wait-on for backend + frontend.
+      # Volume mounts write test results directly to ./e2e/report/ on the runner.
+      - name: Run E2E via Docker Compose
+        run: docker compose --profile test up --build --exit-code-from playwright playwright
 
-      # Build frontend with CI env vars so URLs are baked in
-      - name: Build frontend
-        working-directory: frontend
-        run: npm install && npm run build
-
-      # Install Playwright browsers (also installs root deps incl. wait-on)
-      - name: Install Playwright
-        run: npm install && npx playwright install --with-deps chromium
-
-      # Start backend — log to file so we can debug crashes
-      - name: Start backend
-        working-directory: backend
-        run: node dist/index.js > /tmp/backend.log 2>&1 &
-
-      # Serve the built frontend on :5173
-      - name: Start frontend preview
-        working-directory: frontend
-        run: npm run preview -- --port 5173 &
-
-      # Wait for both servers to be ready
-      - name: Wait for services
-        run: npx wait-on http://localhost:3001/health http://localhost:5173 --timeout 90000
-
-      # Show backend log if wait-on failed
-      - name: Show backend log on failure
-        if: failure()
-        run: cat /tmp/backend.log || echo "(no backend log)"
-
-      # Run the full test suite
-      - name: Run E2E tests
-        run: npx playwright test
+      - name: Stop all services
+        if: always()
+        run: docker compose --profile test down --volumes
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -110,9 +79,9 @@ jobs:
           path: e2e/report/
           retention-days: 7
 
-  # ── 3. Deploy to Vercel (main branch only) ──────────────────────────────────
-  deploy:
-    name: Deploy to Vercel
+  # ── 3. Deploy frontend to Vercel (main branch only) ─────────────────────────
+  deploy-frontend:
+    name: Deploy Frontend to Vercel
     runs-on: ubuntu-latest
     needs: [build]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -122,13 +91,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Pull Vercel project config + env vars (set in Vercel dashboard)
       - name: Pull Vercel environment
         run: npx vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
 
-      # vercel build respects the project root (frontend/) set in Vercel dashboard
       - name: Build project
         run: npx vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
 
       - name: Deploy to Vercel
         run: npx vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
+
+  # ── 4. Deploy backend to Railway (main branch only) ──────────────────────────
+  deploy-backend:
+    name: Deploy Backend to Railway
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Railway
+        working-directory: backend
+        run: npx @railway/cli@latest up --detach
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}

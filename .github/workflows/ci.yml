@@ -90,22 +90,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install frontend deps
-        working-directory: frontend
-        run: npm install
+      - name: Pull Vercel environment
+        run: npx vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
 
-      - name: Build frontend
-        working-directory: frontend
-        run: npm run build
-        env:
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-          VITE_API_URL: https://collabdocs-production.up.railway.app
-          VITE_WS_URL: wss://collabdocs-production.up.railway.app/ws
+      - name: Build project
+        run: npx vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
 
       - name: Deploy to Vercel
-        working-directory: frontend
-        run: npx vercel deploy dist/ --prod --token=${{ secrets.VERCEL_TOKEN }}
+        run: npx vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
 
   # ── 4. Deploy backend to Railway (main branch only) ──────────────────────────
   deploy-backend:

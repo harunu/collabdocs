@@ -110,7 +110,6 @@ jobs:
 
       - name: Deploy to Railway
         working-directory: backend
-        run: npx @railway/cli@latest up --detach
+        run: npx @railway/cli@latest up --service collabdocs --detach
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-          RAILWAY_SERVICE_ID: ${{ secrets.RAILWAY_SERVICE_ID }}
